@@ -5,29 +5,25 @@ import { createNoise2D } from "simplex-noise";
 
 interface GradientCanvasProps {
   colors: string[];
-  warpSpeed: number;
-  setWarpSpeed?: (value: number) => void; // optional, for compatibility
-  warpScale: number;
-  warpComplexity: number;
   grainAmount: number;
-  glassEffect: boolean;
-  glassStripes: number;
-  glassOpacity: number;
-  isAnimating: boolean;
+  glassEffect?: boolean;
+  glassStripes?: number;
+  glassOpacity?: number;
+  isAnimating?: boolean;
+  verticalStripes?: boolean;
+  ribbonColor?: string;
 }
 
 const GradientCanvas = forwardRef<HTMLCanvasElement, GradientCanvasProps>(
   (props, ref) => {
     const {
       colors,
-      warpSpeed,
-      warpScale,
-      warpComplexity,
       grainAmount,
       glassEffect,
       glassStripes,
       glassOpacity,
-      isAnimating,
+      verticalStripes,
+      ribbonColor,
     } = props;
 
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -42,10 +38,8 @@ const GradientCanvas = forwardRef<HTMLCanvasElement, GradientCanvasProps>(
       return [r, g, b];
     };
 
-    // Add a prop for ribbon color (default to black if not provided)
-    // You can add this prop to your parent/page and pass it down
-    // For now, fallback to black
-    const ribbonColorHex = "#000000";
+    // Use pickable ribbon color or fallback to black
+    const ribbonColorHex = ribbonColor || "#000000";
     const ribbonColorRgb = hexToRgb(ribbonColorHex);
 
     // Handle canvas resize
@@ -148,6 +142,7 @@ const GradientCanvas = forwardRef<HTMLCanvasElement, GradientCanvasProps>(
       const imageData = ctx.createImageData(width, height);
       const data = imageData.data;
 
+      // --- Main gradient and ribbon rendering ---
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const i = (y * width + x) * 4;
@@ -235,38 +230,232 @@ const GradientCanvas = forwardRef<HTMLCanvasElement, GradientCanvasProps>(
             Math.min(255, color[2] + highlight),
           ];
 
-          // No grain, no geometric patterns, no hard lines
+          // --- Add grain effect if enabled ---
+          // Store grain separately so it can be added after blur
+          let grain = 0;
+          if (grainAmount > 0) {
+            grain = (Math.random() - 0.5) * grainAmount * 50;
+          }
 
           data[i] = color[0];
           data[i + 1] = color[1];
           data[i + 2] = color[2];
           data[i + 3] = 255;
+          // Store grain for later
+          if (!("grainMap" in window)) (window as any).grainMap = {};
+          (window as any).grainMap[i] = grain;
         }
       }
 
-      ctx.putImageData(imageData, 0, 0);
-
-      // Glass effect (unchanged)
-      if (glassEffect && glassStripes > 0) {
-        const stripeHeight = height / glassStripes;
+      // --- Vertical glass-like stripes with parallax/distortion effect ---
+      if (verticalStripes) {
+        const numStripes = 28;
+        const stripeWidth = width / numStripes;
+        const gap = Math.max(2, Math.round(stripeWidth * 0.18));
         ctx.save();
-        ctx.globalAlpha = glassOpacity;
-        ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-        for (let i = 0; i < glassStripes; i += 2) {
-          ctx.fillRect(0, i * stripeHeight, width, stripeHeight);
+        ctx.globalAlpha = 1;
+
+        // Read the current image for distortion
+        const srcData = ctx.getImageData(0, 0, width, height);
+
+        for (let i = 0; i < numStripes; i++) {
+          const xStart = Math.round(i * stripeWidth + gap);
+          const xEnd = Math.round((i + 1) * stripeWidth - gap);
+          if (xEnd <= xStart) continue;
+
+          // Blur the gap region between stripes
+          if (gap > 0) {
+            const blurGap = (xStart: number, width: number) => {
+              const blurRadius = Math.max(2, Math.round(stripeWidth * 0.18));
+              for (let x = xStart; x < xStart + width; x++) {
+                if (x < 0 || x >= ctx.canvas.width) continue;
+                for (let y = 0; y < height; y++) {
+                  let rSum = 0,
+                    gSum = 0,
+                    bSum = 0,
+                    count = 0;
+                  for (let bx = -blurRadius; bx <= blurRadius; bx++) {
+                    const px = Math.max(
+                      0,
+                      Math.min(ctx.canvas.width - 1, x + bx)
+                    );
+                    const idx = (y * ctx.canvas.width + px) * 4;
+                    rSum += data[idx];
+                    gSum += data[idx + 1];
+                    bSum += data[idx + 2];
+                    count++;
+                  }
+                  const dstIdx = (y * ctx.canvas.width + x) * 4;
+                  data[dstIdx + 0] = Math.round(
+                    data[dstIdx + 0] * 0.3 + (rSum / count) * 0.7
+                  );
+                  data[dstIdx + 1] = Math.round(
+                    data[dstIdx + 1] * 0.3 + (gSum / count) * 0.7
+                  );
+                  data[dstIdx + 2] = Math.round(
+                    data[dstIdx + 2] * 0.3 + (bSum / count) * 0.7
+                  );
+                  // Do not touch alpha or grain here
+                }
+              }
+            };
+            blurGap(Math.round(i * stripeWidth), gap);
+            blurGap(Math.round((i + 1) * stripeWidth - gap), gap);
+          }
+
+          // Sharper, more defined edges
+          const edgeSoftness = stripeWidth * 0.09;
+
+          // --- Blur the background under the stripe (pixel manipulation for blur effect) ---
+          const blurRadius = Math.max(2, Math.round(stripeWidth * 0.18));
+          for (let x = xStart; x < xEnd; x++) {
+            for (let y = 0; y < height; y++) {
+              let rSum = 0,
+                gSum = 0,
+                bSum = 0,
+                count = 0;
+              for (let bx = -blurRadius; bx <= blurRadius; bx++) {
+                const px = Math.max(0, Math.min(width - 1, x + bx));
+                const idx = (y * width + px) * 4;
+                rSum += data[idx];
+                gSum += data[idx + 1];
+                bSum += data[idx + 2];
+                count++;
+              }
+              const dstIdx = (y * width + x) * 4;
+              data[dstIdx + 0] = Math.round(
+                data[dstIdx + 0] * 0.3 + (rSum / count) * 0.7
+              );
+              data[dstIdx + 1] = Math.round(
+                data[dstIdx + 1] * 0.3 + (gSum / count) * 0.7
+              );
+              data[dstIdx + 2] = Math.round(
+                data[dstIdx + 2] * 0.3 + (bSum / count) * 0.7
+              );
+              // Do not touch alpha or grain here
+            }
+          }
+
+          for (let x = xStart; x < xEnd; x++) {
+            const center = (xStart + xEnd) / 2;
+            const dist = Math.abs(x - center);
+            const edgeAlpha = Math.exp(-Math.pow(dist / edgeSoftness, 2));
+            const maxShift = stripeWidth * 0.22;
+            const shift =
+              Math.sin((Math.PI * (x - xStart)) / (xEnd - xStart)) *
+              maxShift *
+              edgeAlpha;
+
+            for (let y = 0; y < height; y++) {
+              let srcX = Math.round(x + shift);
+              srcX = Math.max(0, Math.min(width - 1, srcX));
+              const srcIdx = (y * width + srcX) * 4;
+              const dstIdx = (y * width + x) * 4;
+
+              // Get background color
+              const r = srcData.data[srcIdx];
+              const g = srcData.data[srcIdx + 1];
+              const b = srcData.data[srcIdx + 2];
+
+              // Compute local brightness for adaptive transparency/contrast
+              const brightness = (r + g + b) / (3 * 255);
+
+              // Stripe alpha: more visible in dark, less in light
+              const baseAlpha = 0.32 + 0.32 * (1 - brightness);
+              const alpha = edgeAlpha * baseAlpha;
+
+              // --- Reflect color at the left and right edge of the stripe ---
+              let reflectR = r,
+                reflectG = g,
+                reflectB = b;
+              const reflectStrength = Math.max(
+                0,
+                1 - Math.abs((x - center) / (stripeWidth * 0.5))
+              );
+              if (x - xStart < stripeWidth * 0.18) {
+                // Left edge: sample from right edge
+                const reflectX = Math.min(
+                  xEnd - 1,
+                  x + Math.round(stripeWidth * 0.7)
+                );
+                const reflectIdx = (y * width + reflectX) * 4;
+                reflectR = srcData.data[reflectIdx];
+                reflectG = srcData.data[reflectIdx + 1];
+                reflectB = srcData.data[reflectIdx + 2];
+              } else if (xEnd - x < stripeWidth * 0.18) {
+                // Right edge: sample from left edge
+                const reflectX = Math.max(
+                  xStart,
+                  x - Math.round(stripeWidth * 0.7)
+                );
+                const reflectIdx = (y * width + reflectX) * 4;
+                reflectR = srcData.data[reflectIdx];
+                reflectG = srcData.data[reflectIdx + 1];
+                reflectB = srcData.data[reflectIdx + 2];
+              }
+              // Blend the reflection into the color for the edge
+              const edgeBlend = 0.55 * reflectStrength * edgeAlpha;
+              const finalR = Math.round(
+                r * (1 - edgeBlend) + reflectR * edgeBlend
+              );
+              const finalG = Math.round(
+                g * (1 - edgeBlend) + reflectG * edgeBlend
+              );
+              const finalB = Math.round(
+                b * (1 - edgeBlend) + reflectB * edgeBlend
+              );
+
+              // Blend the distorted color over the original
+              data[dstIdx + 0] = Math.round(
+                finalR * alpha + data[dstIdx + 0] * (1 - alpha)
+              );
+              data[dstIdx + 1] = Math.round(
+                finalG * alpha + data[dstIdx + 1] * (1 - alpha)
+              );
+              data[dstIdx + 2] = Math.round(
+                finalB * alpha + data[dstIdx + 2] * (1 - alpha)
+              );
+            }
+          }
         }
+
+        // After all blur and stripe effects, re-apply grain
+        const grainMap = (window as any).grainMap;
+        if (grainMap) {
+          for (let i = 0; i < data.length; i += 4) {
+            const grain = grainMap[i] || 0;
+            data[i] = Math.max(0, Math.min(255, data[i] + grain));
+            data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + grain));
+            data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + grain));
+          }
+          delete (window as any).grainMap;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
         ctx.restore();
+      } else {
+        // If no stripes, apply grain after all rendering
+        const grainMap = (window as any).grainMap;
+        if (grainMap) {
+          for (let i = 0; i < data.length; i += 4) {
+            const grain = grainMap[i] || 0;
+            data[i] = Math.max(0, Math.min(255, data[i] + grain));
+            data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + grain));
+            data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + grain));
+          }
+          delete (window as any).grainMap;
+          ctx.putImageData(imageData, 0, 0);
+        }
       }
     }, [
       dimensions.width,
       dimensions.height,
-      ...colors,
-      warpSpeed,
-      warpScale,
-      warpComplexity,
+      colors,
+      grainAmount,
       glassEffect,
       glassStripes,
       glassOpacity,
+      verticalStripes,
     ]);
 
     return (

@@ -9,6 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HexColorPicker } from "react-colorful";
 import { Download, RefreshCw, Pause, Play } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 // Utility to generate a random hex color
 function randomColor() {
@@ -75,51 +82,29 @@ function getComplementaryColor(hex: string) {
 interface ControlPanelProps {
   colors: string[];
   setColors: (colors: string[]) => void;
-  warpSpeed: number;
-  setWarpSpeed: (value: number) => void;
-  warpScale: number;
-  setWarpScale: (value: number) => void;
-  warpComplexity: number;
-  setWarpComplexity: (value: number) => void;
   grainAmount: number;
   setGrainAmount: (value: number) => void;
-  glassEffect: boolean;
-  setGlassEffect: (value: boolean) => void;
-  glassStripes: number;
-  setGlassStripes: (value: number) => void;
-  glassOpacity: number;
-  setGlassOpacity: (value: number) => void;
-  isAnimating: boolean;
-  setIsAnimating: (value: boolean) => void;
   onReset: () => void;
-  onDownload: () => void;
+  onDownload: (width: number, height: number) => void;
   activeColorTab: string;
   setActiveColorTab: (tab: string) => void;
+  verticalStripes?: boolean;
+  setVerticalStripes?: (value: boolean) => void;
+  ribbonColor?: string;
+  setRibbonColor?: (color: string) => void;
 }
 
 export default function ControlPanel({
   colors,
   setColors,
-  warpSpeed,
-  setWarpSpeed,
-  warpScale,
-  setWarpScale,
-  warpComplexity,
-  setWarpComplexity,
   grainAmount,
   setGrainAmount,
-  glassEffect,
-  setGlassEffect,
-  glassStripes,
-  setGlassStripes,
-  glassOpacity,
-  setGlassOpacity,
-  isAnimating,
-  setIsAnimating,
   onReset,
   onDownload,
-  activeColorTab,
-  setActiveColorTab,
+  verticalStripes,
+  setVerticalStripes,
+  ribbonColor = "#000000",
+  setRibbonColor,
 }: ControlPanelProps) {
   // Handler for color change
   const handleColorChange = (idx: number, color: string) => {
@@ -142,6 +127,24 @@ export default function ControlPanel({
   const handleRemoveColor = (idx: number) => {
     if (colors.length <= 2) return; // Always keep at least 2 stops
     setColors(colors.filter((_, i) => i !== idx));
+  };
+
+  // Handler for ribbon color change
+  const handleRibbonColorChange = (color: string) => {
+    setRibbonColor?.(color);
+  };
+
+  // --- Download Modal State ---
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadWidth, setDownloadWidth] = useState(1920);
+  const [downloadHeight, setDownloadHeight] = useState(1080);
+
+  // --- Download Handler with dimensions ---
+  const handleDownloadClick = () => setShowDownloadModal(true);
+
+  const handleDownloadConfirm = () => {
+    setShowDownloadModal(false);
+    onDownload?.(downloadWidth, downloadHeight);
   };
 
   return (
@@ -181,63 +184,20 @@ export default function ControlPanel({
             >
               + Add Color Stop
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Warp Controls */}
-      <Card className="bg-zinc-900 border-zinc-800">
-        <CardHeader className="pb-3">
-          <CardTitle>Warp Flow</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label htmlFor="warp-speed">Speed</Label>
-              <span className="text-sm text-zinc-400">
-                {warpSpeed.toFixed(2)}
-              </span>
+            {/* Ribbon Color Picker */}
+            <div className="flex items-center space-x-4 mt-2">
+              <div>
+                <Label className="mb-1 block">Ribbon Color</Label>
+                <HexColorPicker
+                  color={ribbonColor}
+                  onChange={handleRibbonColorChange}
+                />
+              </div>
+              <div
+                className="w-10 h-10 rounded-md border border-zinc-700"
+                style={{ backgroundColor: ribbonColor }}
+              />
             </div>
-            <Slider
-              id="warp-speed"
-              min={0}
-              max={1}
-              step={0.01}
-              value={[warpSpeed]}
-              onValueChange={(value) => setWarpSpeed(value[0])}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label htmlFor="warp-scale">Scale</Label>
-              <span className="text-sm text-zinc-400">
-                {warpScale.toFixed(2)}
-              </span>
-            </div>
-            <Slider
-              id="warp-scale"
-              min={0.1}
-              max={1}
-              step={0.01}
-              value={[warpScale]}
-              onValueChange={(value) => setWarpScale(value[0])}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label htmlFor="warp-complexity">Complexity</Label>
-              <span className="text-sm text-zinc-400">{warpComplexity}</span>
-            </div>
-            <Slider
-              id="warp-complexity"
-              min={1}
-              max={5}
-              step={1}
-              value={[warpComplexity]}
-              onValueChange={(value) => setWarpComplexity(value[0])}
-            />
           </div>
         </CardContent>
       </Card>
@@ -264,51 +224,14 @@ export default function ControlPanel({
               onValueChange={(value) => setGrainAmount(value[0])}
             />
           </div>
-
           <div className="flex items-center justify-between py-2">
-            <Label htmlFor="glass-effect">Glass Effect</Label>
+            <Label htmlFor="vertical-stripes">Vertical Glass Stripes</Label>
             <Switch
-              id="glass-effect"
-              checked={glassEffect}
-              onCheckedChange={setGlassEffect}
+              id="vertical-stripes"
+              checked={!!verticalStripes}
+              onCheckedChange={setVerticalStripes}
             />
           </div>
-
-          {glassEffect && (
-            <>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label htmlFor="glass-stripes">Glass Stripes</Label>
-                  <span className="text-sm text-zinc-400">{glassStripes}</span>
-                </div>
-                <Slider
-                  id="glass-stripes"
-                  min={1}
-                  max={20}
-                  step={1}
-                  value={[glassStripes]}
-                  onValueChange={(value) => setGlassStripes(value[0])}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label htmlFor="glass-opacity">Glass Opacity</Label>
-                  <span className="text-sm text-zinc-400">
-                    {glassOpacity.toFixed(2)}
-                  </span>
-                </div>
-                <Slider
-                  id="glass-opacity"
-                  min={0.05}
-                  max={0.5}
-                  step={0.01}
-                  value={[glassOpacity]}
-                  onValueChange={(value) => setGlassOpacity(value[0])}
-                />
-              </div>
-            </>
-          )}
         </CardContent>
       </Card>
 
@@ -316,24 +239,8 @@ export default function ControlPanel({
       <div className="flex flex-col space-y-3">
         <Button
           variant="default"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-          onClick={() => setIsAnimating(!isAnimating)}
-        >
-          {isAnimating ? (
-            <>
-              <Pause className="mr-2 h-4 w-4" /> Pause Animation
-            </>
-          ) : (
-            <>
-              <Play className="mr-2 h-4 w-4" /> Resume Animation
-            </>
-          )}
-        </Button>
-
-        <Button
-          variant="default"
           className="w-full bg-green-600 hover:bg-green-700 text-white"
-          onClick={onDownload}
+          onClick={handleDownloadClick}
         >
           <Download className="mr-2 h-4 w-4" /> Download Image
         </Button>
@@ -346,6 +253,45 @@ export default function ControlPanel({
           <RefreshCw className="mr-2 h-4 w-4" /> Reset Settings
         </Button>
       </div>
+
+      {/* Download Modal */}
+      <Dialog open={showDownloadModal} onOpenChange={setShowDownloadModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Download Image</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <label className="flex flex-col">
+              Width (px)
+              <input
+                type="number"
+                min={1}
+                value={downloadWidth}
+                onChange={(e) => setDownloadWidth(Number(e.target.value))}
+                className="mt-1 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white"
+              />
+            </label>
+            <label className="flex flex-col">
+              Height (px)
+              <input
+                type="number"
+                min={1}
+                value={downloadHeight}
+                onChange={(e) => setDownloadHeight(Number(e.target.value))}
+                className="mt-1 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white"
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleDownloadConfirm}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+            >
+              Download
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

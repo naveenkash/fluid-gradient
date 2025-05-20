@@ -19,19 +19,12 @@ export default function Home() {
   // Gradient color stops (multi-color support)
   const [colors, setColors] = useState(["#FF4500", "#FF0000", "#000000"]);
 
-  // Warp settings
-  const [warpSpeed, setWarpSpeed] = useState(0.2);
-  const [warpScale, setWarpScale] = useState(0.3);
-  const [warpComplexity, setWarpComplexity] = useState(2);
-
   // Effect settings
   const [grainAmount, setGrainAmount] = useState(0);
-  const [glassEffect, setGlassEffect] = useState(false);
-  const [glassStripes, setGlassStripes] = useState(5);
-  const [glassOpacity, setGlassOpacity] = useState(0.2);
+  const [verticalStripes, setVerticalStripes] = useState(false);
 
-  // Animation control
-  const [isAnimating, setIsAnimating] = useState(true);
+  // Ribbon color state
+  const [ribbonColor, setRibbonColor] = useState("#000000");
 
   // Color picker tab state
   const [activeColorTab, setActiveColorTab] = useState("start");
@@ -39,27 +32,54 @@ export default function Home() {
   // Canvas ref for download functionality
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Handle download functionality
-  const handleDownload = () => {
+  // Add a key to force remount GradientCanvas for new pattern
+  const [canvasKey, setCanvasKey] = useState(Math.random());
+
+  // --- Ribbon color change handler (update color only, do not remount canvas) ---
+  const handleRibbonColorChange = (color: string) => {
+    setRibbonColor(color);
+    // Do not update canvasKey, just update the color state
+  };
+
+  // --- Download handler with custom dimensions ---
+  const handleDownload = (width?: number, height?: number) => {
     if (!canvasRef.current) return;
 
+    // If no custom dimensions, download current canvas
+    if (!width || !height) {
+      const link = document.createElement("a");
+      link.download = "fluid-gradient.png";
+      link.href = canvasRef.current.toDataURL("image/png");
+      link.click();
+      return;
+    }
+
+    // Create an offscreen canvas for custom size
+    const offscreen = document.createElement("canvas");
+    offscreen.width = width;
+    offscreen.height = height;
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) return;
+
+    // Render the gradient at the requested size
+    // Reuse the same logic as in GradientCanvas, but with new dimensions
+    // For simplicity, we draw the current canvas scaled up/down
+    ctx.drawImage(canvasRef.current, 0, 0, width, height);
+
     const link = document.createElement("a");
-    link.download = "fluid-gradient.png";
-    link.href = canvasRef.current.toDataURL("image/png");
+    link.download = `fluid-gradient-${width}x${height}.png`;
+    link.href = offscreen.toDataURL("image/png");
     link.click();
   };
 
   // Reset to default settings
   const handleReset = () => {
     setColors(generateRandomPalette(3 + Math.floor(Math.random() * 3))); // 3-5 colors
-    setWarpSpeed(0.2);
-    setWarpScale(0.3);
-    setWarpComplexity(2);
+
     setGrainAmount(0);
-    setGlassEffect(false);
-    setGlassStripes(5);
-    setGlassOpacity(0.2);
-    setIsAnimating(true);
+
+    // Force a new pattern by resetting the key on GradientCanvas
+    setCanvasKey(Math.random());
   };
 
   // Add a button handler to generate and set a random palette
@@ -78,16 +98,12 @@ export default function Home() {
           {/* Main canvas area */}
           <div className="lg:col-span-2 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800">
             <GradientCanvas
+              key={canvasKey}
               ref={canvasRef}
               colors={colors}
-              warpSpeed={warpSpeed}
-              warpScale={warpScale}
-              warpComplexity={warpComplexity}
               grainAmount={grainAmount}
-              glassEffect={glassEffect}
-              glassStripes={glassStripes}
-              glassOpacity={glassOpacity}
-              isAnimating={isAnimating}
+              verticalStripes={verticalStripes}
+              ribbonColor={ribbonColor}
             />
           </div>
 
@@ -96,26 +112,16 @@ export default function Home() {
             <ControlPanel
               colors={colors}
               setColors={setColors}
-              warpSpeed={warpSpeed}
-              setWarpSpeed={setWarpSpeed}
-              warpScale={warpScale}
-              setWarpScale={setWarpScale}
-              warpComplexity={warpComplexity}
-              setWarpComplexity={setWarpComplexity}
               grainAmount={grainAmount}
               setGrainAmount={setGrainAmount}
-              glassEffect={glassEffect}
-              setGlassEffect={setGlassEffect}
-              glassStripes={glassStripes}
-              setGlassStripes={setGlassStripes}
-              glassOpacity={glassOpacity}
-              setGlassOpacity={setGlassOpacity}
-              isAnimating={isAnimating}
-              setIsAnimating={setIsAnimating}
               onReset={handleReset}
               onDownload={handleDownload}
               activeColorTab={activeColorTab}
               setActiveColorTab={setActiveColorTab}
+              setVerticalStripes={setVerticalStripes}
+              verticalStripes={verticalStripes}
+              ribbonColor={ribbonColor}
+              setRibbonColor={handleRibbonColorChange}
             />
             <button
               className="mt-4 w-full py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-white font-semibold"
